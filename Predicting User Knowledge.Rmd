@@ -1,0 +1,508 @@
+---
+title: "Predicting User Knowledge"
+author: "Isabella Chittumuri"
+date: "12/13/2020"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+```
+
+```{r}
+# Set working directory
+setwd("~/Desktop/Projects/STAT 717")
+
+# Packages
+library(dplyr)
+library(tidyverse)
+library(readxl)
+library(readr)
+library(qualityTools)
+library(MASS)
+library(gridExtra)
+```
+
+# Set Up
+
+# About the data
+
+Found on UCI Machine Learning Repository:
+http://archive.ics.uci.edu/ml/datasets/User+Knowledge+Modeling#
+
+It is the real dataset about the students' knowledge status about the subject of Electrical DC Machines. The dataset had been obtained from Ph.D. Thesis.
+
+```{r}
+# Import excel file
+user <- read_excel("Data_User_Modeling_Dataset_Hamdi Tolga KAHRAMAN.xls", sheet = 2)
+str(user)
+```
+
+Attribute Information:
+STG (The degree of study time for goal object materails),
+SCG (The degree of repetition number of user for goal object materails)
+STR (The degree of study time of user for related objects with goal object)
+LPR (The exam performance of user for related objects with goal object)
+PEG (The exam performance of user for goal objects)
+UNS (The knowledge level of user)
+
+Combined train and test excel sheets into one excel sheet called user
+
+```{r}
+# Drop Unwanted Columns
+user <- user[, -c(7:9)]
+
+# Character as factor
+user$UNS <- as.factor(user$UNS)
+
+# Summary
+summary(user)
+```
+
+```{r include=FALSE}
+# To see what levels
+user$UNS[1:258]
+
+# User Levels: High (1) Low (2) Middle (3)  very_low (4)
+
+# Factors as numeric
+user$num_UNS <- as.numeric(user$UNS)
+```
+
+```{r}
+# Train Histograms
+par(mfrow=c(2,3))
+hist(user$STG, col="lightgreen")
+hist(user$SCG, col="lightgreen")
+hist(user$STR, col="lightgreen")
+hist(user$LPR, col="lightgreen")
+hist(user$PEG, col="lightgreen")
+hist(user$num_UNS, col="lightgreen")
+```
+
+```{r}
+pairs(user)
+```
+
+
+```{r}
+# Density plots between each predictor and the response
+p1 <- ggplot(user, aes(fill = UNS, x = STG)) + geom_density(alpha = .3, color = NA)
+p2 <- ggplot(user, aes(fill = UNS, x = SCG)) + geom_density(alpha = .3, color = NA)
+p3 <- ggplot(user, aes(fill = UNS, x = STR)) + geom_density(alpha = .3, color = NA)
+p4 <- ggplot(user, aes(fill = UNS, x = LPR)) + geom_density(alpha = .3, color = NA)
+p5 <- ggplot(user, aes(fill = UNS, x = PEG)) + geom_density(alpha = .3, color = NA)
+
+# Shows all 5 plots at once
+grid.arrange(p1, p2, p3, p4, p5, ncol = 2)
+```
+
+The plot above shows the distribution in each variable / column. We can focus our attention on the PEG box. As we know that PEG is exam performance of user for goal objects. We can see that the higher result exam of a user, this user tends to be classified into the class of "high knowledge" and vice versa.
+
+
+# Classification 
+
+## LDA
+
+(a) Find the linear classification functions.
+
+```{r}
+# Drop Unwanted Columns
+user <- user[, -c(6)]
+
+# Linear Discriminant Analysis
+user.lda <- lda(num_UNS ~ ., data=user); user.lda
+```
+
+The discriminant functions are linear combinations of the four variables. These discriminants are scaled :
+
+$$
+LD_1 = -0.03465483*STG + 0.61721131*SCG - 0.55708282*STR + 4.41173871*LPR + 14.13307856*PEG\\
+LD_2 = -0.2772717*STG + 0.1478505*SCG - 0.5711982*STR + 3.8228752*LPR - 0.8612875*PEG\\
+$$
+
+Percentage separations achieved by the first discriminant function is 99.57%
+Percentage separations achieved by the second discriminant function is 0.36%
+
+
+(b) Find the classification table using the linear classification functions in part (a) 
+
+```{r}
+# LDA Predictions
+pred <- predict(user.lda, user)$class
+
+# Classification table
+tt <- table(Predicted = pred, Actual = user$num_UNS); tt
+```
+
+```{r}
+# Misclassification error
+1-sum(diag(tt))/sum(tt)
+```
+
+We created predictions based on the linear classification functions and produced it’s corresponding classification table. After, we found the misclassification error to be 5.2%.
+
+## QDA
+
+(c) Find the classification table using quadratic classification functions (assuming population covariance matrices are not equal).
+
+```{r}
+# Quadratic Discriminant Analysis
+user.qda <- qda(num_UNS ~ ., data=user); user.qda
+```
+
+```{r}
+ # QDA Predictions
+pred <- predict(user.qda, user)$class
+
+# Classification table
+tt <- table(Predicted = pred, Actual = user$num_UNS ); tt
+```
+
+```{r}
+# Misclassification error
+1-sum(diag(tt))/sum(tt)
+```
+
+We created predictions based on the quadratic classification functions and produced it’s corresponding classification table. After, we found the misclassification error to be 3.2%
+
+In comparison, the quadratic classification functions seemed to better predict the data than the linear classification functions, because it produced a lower misclassification error.
+
+## QDA Holdout method
+
+(d) Find the classification table using linear classification functions and the holdout method.
+
+```{r}
+set.seed(555)
+
+# Spilt for Holdout method 70/30
+spilt <- sample(2, nrow(user), 
+                replace = T,
+                prob = c(0.7, 0.3)) 
+
+# Train data
+training <- user[spilt == 1,]
+
+# LDA for Train
+train.qda <- qda(num_UNS ~ ., data=training); train.qda
+```
+
+```{r}
+# Predictions for Train
+train.pred <- predict(train.qda, training)$class
+
+# Classification table
+train.table <- table(Predicted = train.pred, Actual = training$num_UNS); train.table
+```
+
+```{r}
+# Misclassification error on train
+1-sum(diag(train.table))/sum(train.table)
+```
+
+We spilt the data so that 70% was in train and 30% was in test. We created predictions using the train model against the training data and produced it’s corresponding classification table. After, we found the misclassification error on train to be 4.96%.
+
+```{r}
+# Test data
+testing <- user[spilt == 2,] 
+
+# Predictions for Test
+test.pred <- predict(train.qda, testing)$class
+
+# Classification table
+test.table <- table(Predicted = test.pred, Actual = testing$num_UNS); test.table
+```
+
+```{r}
+# Misclassification error on test
+1-sum(diag(test.table))/sum(test.table)
+```
+
+We created predictions using the train model against the testing data and produced it’s corresponding classification table. After, we found the misclassification error on test to be 5.78%.
+
+# Clustering
+
+## K means clustering
+
+1. Determine and visualize the optimal number of clusters
+
+```{r}
+# Standardize
+user.scale <- scale(user[,-6], center = F, scale = T)
+```
+
+```{r}
+library(factoextra)
+
+# Elbow method
+fviz_nbclust(user.scale, kmeans, method = "wss") + geom_vline(xintercept = 4, linetype =2)
+```
+
+We can use the elbow method, where the bend indicates the optimal number of clusters. Here we see that the optimal number of clusters is 4; clusters past 4 have little value.
+
+2. Compute k means clusters on data matrix
+
+```{r}
+# To set a seed for random number generator to randomly select centroids for k means algorithms
+set.seed(123)
+
+# k means: 4 the number of clusters
+# nstart: if centers if a number, how many random set should be chosen?
+km.res <- kmeans(user.scale, 4, nstart = 25)
+print(km.res)
+```
+
+3. Accessing different components of k means result
+
+```{r}
+# Cluster, a vector of integers indicating the cluster to which each point is allocated
+km.res$cluster
+km.res$centers
+
+# The number of observations in each cluster
+km.res$size
+```
+
+4. Directly computing means using aggregate function
+
+```{r}
+# Compute summary statistics of data subsets
+aggregate(user.scale, by=list(cluster=km.res$cluster), mean)
+```
+
+5. Point classifcation of original data
+
+```{r}
+# Combine R objects by rows and columns
+dd <- cbind(user.scale, cluster = km.res$cluster)
+head(dd)
+```
+
+This shows observations of each varibale that belongs to a speififc clustering group.
+
+## Hierarchical clustering
+
+```{r}
+# dist () = computes and returns the distance matrix
+require(stats)
+res.dist <- dist(x = user.scale, method = "euclidean")
+
+# d = dissimilarity structure produced by dist() function to be used
+res.hc <- hclust(d = res.dist, 
+                 method = "complete")
+```
+
+```{r}
+# fviz_dend = enhanced visualization of dendrogram
+require(factoextra)
+fviz_dend(x = res.hc, cex = 0.8, lwd = 0.8, k = 4,
+          k_colors = c("red", "green3", "blue", "magenta"))
+```
+
+The above shows a simple cluster dendrogram
+
+## Mclust
+
+```{r}
+library(mclust)
+?mclust
+d <- user.scale[,1:5]
+
+# BIC is used, K is up to 9
+(mc <- Mclust(d))
+
+plot(mc, what="BIC")
+```
+
+```{r}
+# Visaulize BIC values
+p1 <- fviz_mclust_bic(mc)
+# Visualize classification
+p2 <- fviz_mclust(mc, "classification", geom = "point")
+
+grid.arrange(p1, p2, ncol = 2)
+```
+
+According to the model selection, our best model is EEI. EEI. is the model that uses  diagonal, equal volume and shape.
+
+The second plot shows that the frist principle component accounts for 27.9% of variation. The second principle component accounts for 21.4% of the variation. So together they account for 49.3% of the variation.
+
+# PCA 
+
+## Covariance
+
+Carry out a principal component analysis on all six variables of the user data. Use both S and R. Which do you think is more appropriate here? Show the percent of variance explained. Based on the average eigenvalue or a scree plot, decide how many components to retain. Can you interpret the components of either S or R?
+
+```{r}
+# Covariance of user
+user_S <- var(user)
+
+# PCA - covariance, user
+user_pca_S <- princomp(covmat = user_S)
+summary(user_pca_S, loadings = TRUE)
+```
+
+We use S, the covariance matrix, to understand how the variables of the data set are varying from the mean with respect to each other, and to see if there is any relationship between them.
+
+The Principal Component Analysis (PCA) is a method used to reduce the dimensionality of large data sets, by transforming a large set of variables into a smaller one that still contains most of the information in the large set.
+
+After computing the PCA of the covariance matrix, we get six principal components. Principal components (PC) are new variables that are constructed as linear combinations of the initial variable. 
+
+We want to retain just enough components to explain a large percentage of the total variation of the original variables. The values between 70% and 90% are sufficient enough. In this case, the first and second PC account for 85% of the total variance of the observed variables. If we add the third PC, this percentage up will increase to 90%. This is understandable since the first three PCs encompass most of  proportion of variance of the data.
+
+```{r}
+# Eigen values for covariance 
+user_S_evals <- eigen(user_S)$values; user_S_evals
+
+# Mean of eigen values
+mean(user_S_evals)
+```
+
+We can excluded the PCs whose eigenvalues are less than the average eigenvalue. In this case, we can exclude every PC except the first one. This also means that only the first PC is greater than the average eigenvalue.
+
+```{r}
+# Scree diagram, covariance
+plot(user_pca_S)
+
+# Scree plot, covariance
+plot(user_pca_S$sdev^2, xlab = "Component number",
+     ylab = "Component variance", type = "l", main = "Scree plot (cov)")
+```
+
+A scree plot shows how much variation each PC captures from the data. This scree plot is has a steep curve that bends quickly and flattens out. This suggests that the first two PCs are sufficient to describe the essence of the data, Based on our entire analysis, we should retain the first two PCs.
+
+## Correlation 
+
+```{r}
+# Correlation of user
+user_R <- cor(user)
+
+# PCA - correlation, user
+user_pca_R <- princomp(covmat = user_R)
+summary(user_pca_R, loadings = TRUE)
+```
+
+We use R, the correlation matrix, to understand is a method of the strength and direction of the relationships between the variables. A correlation is a function of the covariance, but a correlation matrix standardizes each of the variables, with a mean of 0 and a standard deviation of 1.
+
+After computing the PCA of the correlation matrix, we get six principal components. In this case, the first three PCs account for 67% of the total variance of the observed variables. If we add the fourth PC, this percentage up will increase to 81%.
+
+```{r}
+# Eigen values
+user_R_evals <- eigen(user_R)$values; user_R_evals
+
+# Mean of eigen values
+mean(user_R_evals)
+```
+
+Only the first three PCs are greater than the average eigenvalue, meaning that these are the PCs to include.
+
+```{r}
+# Scree diagram, correlation
+plot(user_pca_R)
+
+# Scree plot, correlation
+plot(user_pca_R$sdev^2, xlab = "Component number",
+     ylab = "Component variance", type = "l", main = "Scree plot (cor)")
+```
+
+This scree plot is doesn't have really steep curve. The line actually bends and flattens out slowly, suggesting that we would need more PCs than normal. Based on our entire analysis, we should retain the first three PCs. 
+
+In comparison, the first three components of the covariance matrix account for 90% of the variance, which that of the correlation matrix only accounts for 67% of the variance. Because a larger precent of variance is explained, it is more appropriate to use the covariance matrix S.
+
+# FDA Factor Analysis
+
+Carry out a factor analysis of the user data. Combine the six groups into a single sample.
+
+(a) Estimate the loadings for two factors by the principal component method and do a varimax rotation.
+
+```{r}
+# 1 PC method
+Rmat <- cor(user)
+(e <- eigen(Rmat))
+
+# Proportion of var explained
+pca <- princomp(covmat=Rmat)
+(s <- summary(pca, loadings = TRUE))
+```
+
+```{r}
+# Define loadings
+PC <- -e$vectors[ ,c(1,2)]
+(Load1 <- sqrt(e$values[1])*PC[,1])
+(Load2 <- sqrt(e$values[2])*PC[,2])
+
+p <- nrow(Rmat)
+```
+
+```{r}
+ 
+# 1-factor solution
+LL  <- Load1 %*% t(Load1)
+comm <- Load1^2
+Psi <- diag(rep(1,p) - comm)
+round(Rmat - (LL + Psi), 3)
+
+# 2-factor solution
+( L2  <- cbind(Load1,Load2) )
+LL  <- L2 %*% t(L2)
+comm <- Load1^2 + Load2^2
+Psi <- diag(rep(1,p) - comm)
+round(Rmat - LL - Psi,3)
+```
+
+(b) Did the rotation improve the loadings?
+
+```{r}
+# (a) No rotation
+( mle <- factanal(user, factors = 1, rotation="none") )
+attributes(mle)
+
+# control loading suppression by "cutoff"
+print(loadings(mle), cutoff=0.00001)
+print(loadings(mle), cutoff=0.05)
+mle$uniquenesses
+
+# Error matrix
+est <- tcrossprod(mle$loadings) + diag(mle$uniquenesses)
+( ret <- round(Rmat - est, 3) )
+
+# Test for the # of factors
+mle$PVAL
+sapply(1:1, function(nf) factanal(x=user, factors = nf)$PVAL)
+
+# (b) Varimax rotation
+( mle2 <- factanal(user, factors = 1, rotation="varimax") )
+
+# control loading suppression by "cutoff"
+print(loadings(mle2), cutoff=0.00001)
+mle$uniquenesses
+
+# Error matrix
+est <- tcrossprod(mle2$loadings) + diag(mle2$uniquenesses)
+( ret <- round(Rmat - est, 3) )
+
+# Test for the # of factors
+mle$PVAL 
+sapply(1:1, function(nf) factanal(x=user, factors = nf)$PVAL)
+
+# (c) Factor scores
+( mle3 <- factanal(user, factors = 1, rotation="varimax", scores="regression") )
+mle3$scores
+
+# plot the factors wk over wk
+matplot(mle3$scores,type="l",lty=1:2, col=1:2)
+legend("topleft", legend=c("F1", "F2"), lty=1:2, col=1:2)
+
+# try to add the stock returns as well - scale to see them
+mat <- data.frame(mle3$scores, 50*user[,c(1,4)])
+matplot(mat,type="l")
+
+# (d) Varimax rotation for the PC method compared to no rotation
+library(psych)
+(fit1 <- principal(user, nfactors=2, rotate="none") )
+(fit2 <- principal(user, nfactors=2, rotate="varimax") )
+```
+
+Yes, the rotation improved the loadings. The varimax rotated loadings have higher factor loadings compared to the regular loadings without rotation.
+
+ 
